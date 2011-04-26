@@ -3,8 +3,8 @@
 #define FILE_NAME_LEN 50
 #define MSG_LEN 1000
 
-int verbose_debug = 0;
-GSList* mapped_seg_list = NULL; //list of seg_t objects
+int verbose_debug = 1;
+GList* mapped_seg_list = NULL; //list of seg_t objects
 GHashTable* trans_mapping = NULL; //maps trans_t to trans_info object 
 typedef struct rvm{
     const char* dir_path;
@@ -25,8 +25,8 @@ typedef struct trans_item{
 }trans_item_t;
 
 typedef struct trans_info{
-    GSList* trans_seg_list; //list of segments used in transaction
-    GQueue* old_value_items; //queue of trans_items stored with rvm_about_to_modify
+    GList* trans_seg_list; //list of segments used in transaction
+    GList* old_value_items; //list of trans_items stored with rvm_about_to_modify
 }trans_info_t;
 
 typedef int trans_t;

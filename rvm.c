@@ -25,7 +25,7 @@ int file_exists(const char* file){
 }
 
 seg_t* find_seg (void* segbase){
-    GSList* iterator = mapped_seg_list;
+    GList* iterator = mapped_seg_list;
     for (; iterator; iterator = iterator->next) {
         seg_t* seg = (seg_t*)(iterator -> data);
         if (seg -> mem == segbase){
@@ -181,9 +181,9 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create){
     segment -> size = size_to_create;
     segment -> mem = buffer;
 
-    mapped_seg_list = g_slist_append(mapped_seg_list, segment);
+    mapped_seg_list = g_list_append(mapped_seg_list, segment);
     
-    fprintf(stderr, "\nRVM list size after rvm_map: %d", g_slist_length(mapped_seg_list));
+    fprintf(stderr, "\nRVM list size after rvm_map: %d", g_list_length(mapped_seg_list));
     return buffer;
 
 }
@@ -228,7 +228,7 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases){
         char temp_str[MSG_LEN];
         snprintf(temp_str, MSG_LEN, "\nrvm_begin_trans: Adding %s segment to transaction", seg -> name);
         verbose_print(temp_str);
-        info -> trans_seg_list = g_slist_append(
+        info -> trans_seg_list = g_list_append(
                 info -> trans_seg_list, seg);
 
     }
@@ -236,7 +236,6 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases){
     *tid_cpy = tid;
     printf ( "Insertio tid %d\n", *tid_cpy );
     g_hash_table_insert(trans_mapping, tid_cpy, info); 
-    printf ( "hash size: %d\n", g_hash_table_size(trans_mapping));
     return tid; 
 }
 
@@ -255,14 +254,12 @@ void rvm_about_to_modify(trans_t tid, void* segbase, int offset, int size){
     memcpy(item -> old_value, segbase + offset, size);
 
     trans_info_t* info = g_hash_table_lookup(trans_mapping, &tid);
-    if (info -> old_value_items == NULL){
-        info -> old_value_items = g_queue_new();
-
-        trans_info_t* item = NULL;
-        g_queue_push_tail(info -> old_value_items, item);
-    }
-    g_queue_push_tail(info -> old_value_items, item);
-    fprintf(stderr, "\naBOUTING: segname: %s, offset: %d, size: %d", seg-> name, item -> offset, item -> size);
+    //if (info -> old_value_items == NULL){
+    //    info -> old_value_items = g_queue_new();
+    //}
+    //g_queue_push_tail(info -> old_value_items, item);
+    info -> old_value_items = g_list_append(info -> old_value_items, item);
+    //fprintf(stderr, "\naBOUTING: segname: %s, offset: %d, size: %d", seg-> name, item -> offset, item -> size);
     
 
     //trans_item_t* item1 = (trans_item_t*) g_queue_pop_tail(info -> old_value_items);
@@ -272,9 +269,9 @@ void rvm_about_to_modify(trans_t tid, void* segbase, int offset, int size){
 
 void rvm_commit_trans(trans_t tid){
     trans_info_t* info = g_hash_table_lookup(trans_mapping, &tid);
-    GSList* seg_list = info -> trans_seg_list;
+    GList* seg_list = info -> trans_seg_list;
     seg_t* seg;
-    GSList* iterator;
+    GList* iterator;
     FILE* log_file;
     log_file = fopen("store/txn.log", "a");
 
@@ -292,22 +289,31 @@ void rvm_abort_trans(trans_t tid){
     trans_info_t* info = g_hash_table_lookup(trans_mapping, &tid);
     //GQueue* old_values = info -> old_value_items;
 
-    while((info -> old_value_items) != NULL && g_queue_get_length(info -> old_value_items)){
-        //read list of old value items backwards and apply them
-        //on the segments in memory for all items for this tid.
-        trans_item_t* item = (trans_item_t*) g_queue_pop_tail(info -> old_value_items);
-        if (item == NULL) {
 
-            continue;
-        };
+    seg_t* segu = (seg_t*)g_list_first(mapped_seg_list) -> data;
+    GList* it = g_list_last(info -> old_value_items);
+    for (; it != NULL; it = g_list_previous(it)){
+        trans_item_t* item = (trans_item_t*)(it -> data);
         seg_t* seg = item -> seg;
         
-        
         fprintf(stderr, "\naborting: segname: %s, offset: %d, size: %d", seg-> name, item -> offset, item -> size);
-        memcpy(seg + item -> offset, item -> old_value, item -> size);
+        fprintf(stderr, "\naborting: current contents\n");
+        fwrite(seg -> mem, seg->size, 1, stderr);
 
+        fprintf(stderr, "\naborting: contents which overwrite\n");
+        fwrite(item -> old_value, item -> size, 1, stderr);
 
+        memcpy((seg -> mem) + item -> offset, item -> old_value, item -> size);
+        
     }
+    
+    //while((info -> old_value_items) != NULL && g_queue_get_length(info -> old_value_items)){
+    //    //read list of old value items backwards and apply them
+    //    //on the segments in memory for all items for this tid.
+    //    trans_item_t* item = (trans_item_t*) g_queue_pop_tail(info -> old_value_items);
+
+
+    //}
     
     verbose_print("\nrvm_abort_trans: Successfull abort");
 }
@@ -317,63 +323,65 @@ void rvm_truncate_log(rvm_t rvm){
 
 }
 
-int main(){
-    char* buffers[3];
+/* int main(){
+    char* buffers[1];
     int i;
-    GSList* iterator = NULL;
+    GList* iterator = NULL;
     rvm_t rvm = rvm_init("store");
     fprintf(stderr, "\ncreated path: %s", rvm.dir_path);
     buffers[0] = (char*)rvm_map(rvm, "seg0", 10);
-    buffers[1] = (char*)rvm_map(rvm, "seg1", 10);
-    buffers[2] = (char*)rvm_map(rvm, "seg2", 10);
+    //buffers[1] = (char*)rvm_map(rvm, "seg1", 10);
+    //buffers[2] = (char*)rvm_map(rvm, "seg2", 10);
 
     snprintf(buffers[0]+1, 10, "BLAH1");
-    snprintf(buffers[1]+2, 10, "BLAH2");
-    snprintf(buffers[2]+3, 10, "BLAH3");
-    
+    //snprintf(buffers[1]+2, 10, "BLAH2");
+    //snprintf(buffers[2]+3, 10, "BLAH3");
+    seg_t* segu = (seg_t*)g_list_first(mapped_seg_list) -> data;
+    fprintf(stderr, "\nPoint1:\n");
+    fwrite(segu -> mem, segu -> size, 1, stderr);
     fprintf(stderr, "\nBEFORE\n\n");
     fprintf(stderr, "\nbuffer[0]:\n");
     fwrite(buffers[0], 10, 1, stderr);
     fflush(stderr);
-    fprintf(stderr, "\nbuffer[1]:\n");
-    fwrite(buffers[1], 10, 1, stderr);
-    fflush(stderr);
+    //fprintf(stderr, "\nbuffer[1]:\n");
+    //fwrite(buffers[1], 10, 1, stderr);
+    //fflush(stderr);
 
-    fprintf(stderr, "\nbuffer[2]:\n");
-    fwrite(buffers[2], 10, 1, stderr);
-    fflush(stderr);
+    //fprintf(stderr, "\nbuffer[2]:\n");
+    //fwrite(buffers[2], 10, 1, stderr);
+    //fflush(stderr);
     
     
-    trans_t tid = rvm_begin_trans(rvm, 3, (void**)buffers);
+    trans_t tid = rvm_begin_trans(rvm, 1, (void**)buffers);
     fprintf(stderr, "\ntid: %d ", tid);
     
 
-    //rvm_about_to_modify(tid, buffers[0], 1, 6);
-    snprintf(buffers[0]+1, 10, "TEST1");
-    rvm_about_to_modify(tid, buffers[1], 2, 6);
-    snprintf(buffers[1]+2, 10, "TEST2");
-    
-    rvm_about_to_modify(tid, buffers[2], 3, 6);
-    snprintf(buffers[2]+3, 10, "TEST3");
+    rvm_about_to_modify(tid, buffers[0], 1, 6);
+    //snprintf(buffers[0]+1, 10, "TEST1");
+    //rvm_about_to_modify(tid, buffers[1], 2, 6);
+    //snprintf(buffers[1]+2, 10, "TEST2");
+    //
+    //rvm_about_to_modify(tid, buffers[2], 3, 6);
+    //snprintf(buffers[2]+3, 10, "TEST3");
 
 
     //rvm_commit_trans(tid);
-    rvm_abort_trans(tid);
+    //rvm_abort_trans(tid);
     fprintf(stderr, "\nAFTER\n\n");
     fprintf(stderr, "\nbuffer[0]:\n");
     fwrite(buffers[0], 10, 1, stderr);
     fflush(stderr);
-    fprintf(stderr, "\nbuffer[1]:\n");
-    fwrite(buffers[1], 10, 1, stderr);
-    fflush(stderr);
+    //fprintf(stderr, "\nbuffer[1]:\n");
+    //fwrite(buffers[1], 10, 1, stderr);
+    //fflush(stderr);
 
-    fprintf(stderr, "\nbuffer[2]:\n");
-    fwrite(buffers[2], 10, 1, stderr);
-    fflush(stderr);
+    //fprintf(stderr, "\nbuffer[2]:\n");
+    //fwrite(buffers[2], 10, 1, stderr);
+    //fflush(stderr);
     rvm_unmap(rvm, (void*)buffers[0]); 
-    rvm_unmap(rvm, (void*)buffers[1]);
-    rvm_unmap(rvm, (void*)buffers[2]);
+    //rvm_unmap(rvm, (void*)buffers[1]);
+    //rvm_unmap(rvm, (void*)buffers[2]);
     
     fprintf(stderr, "\n\n");
     abort();
-}
+}*/
