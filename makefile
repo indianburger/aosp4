@@ -1,9 +1,7 @@
-compile: basic.c rvm.h rvm.c 
-	gcc -o rvm rvm.h
-	gcc -o basic basic.c
-
+compile: rvm.h rvm.c 
+	gcc -o rvm rvm.c `pkg-config --libs --cflags glib-2.0`
 	
 clean: 
-	rm -f rvm basic 
+	rm -f rvm  
 cleanall: clean
 	rm -rf store
