@@ -31,16 +31,21 @@ int file_exists(const char* file) {
 	return status;
 }
 
+
 seg_t* find_seg(void* segbase) {
 	GList* iterator = mapped_seg_list;
 	for (; iterator; iterator = iterator->next) {
 		seg_t* seg = (seg_t*) (iterator -> data);
+		//fprintf(stderr, "\n In find_seg - size of the segment  = %d", seg->size);
 		if (seg -> mem == segbase) {
+			//fprintf(stderr,"\n In find_seg - !! size of the segment selected   = %d", seg->size);
 			return seg;
 		}
 	}
 	return NULL;
 }
+
+
 //rvm functions
 rvm_t rvm_init(const char* directory) {
 	int temp;
@@ -145,6 +150,7 @@ void writeDataToDisk(rvm_t rvm, const char* segname, int trunc_flag) {
 		snprintf(verbose_buffer, 100, "\nRecovered/Flushed %s commit record to backing store", curr_segname); 
 		verbose_print(verbose_buffer);
 		fclose(seg_file);
+		//fprintf(stderr, "\n In writedatatodisk: file_size of the segment %s = %d ", curr_segname_full, file_size(curr_segname_full));
 	}
 	
 	fclose(log_file);
@@ -174,7 +180,7 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 		//read contents in backing store to memory
 		file_len = file_size(file_path);
 		fd = open(file_path, O_RDWR, (mode_t) 0600);
-
+		//fprintf(stderr, "\n In rvm_map - Checking file size, do we need to expand, file_len = %lu, size_to_create = %d\n", file_len, size_to_create);
 		if (file_len < size_to_create) {
 			//Seek to one byte before required size and write
 			//one byte so that file is extended
@@ -249,7 +255,7 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 
 	mapped_seg_list = g_list_append(mapped_seg_list, segment);
 	char verbose_buffer[100];
-	snprintf(verbose_buffer, 100, "\nrvm_map successful for segment: %s", segname); 
+	snprintf(verbose_buffer, 100, "\nrvm_map successful for segment: %s \n", segname); 
 	verbose_print(verbose_buffer);
 
 	return buffer;
@@ -262,9 +268,16 @@ void rvm_unmap(rvm_t rvm, void* segbase) {
 		fprintf(stderr, "\nrvm_unmap: Segment not found. Cannot be unmapped.");
 		abort();
 	}
+
 	if (munmap(segbase, seg -> size) == -1) {
 		perror("Error un-mmapping the file");
 	} else {
+	
+		GList* find_seg = g_list_find(mapped_seg_list, seg);
+		//fprintf(stderr, "\n In unmap mapped_seg_list size is = %d\n", g_list_length(mapped_seg_list));
+		mapped_seg_list = g_list_remove_link(mapped_seg_list, find_seg);
+		//fprintf(stderr, "\n In unmap mapped_seg_list size should decrease to = %d\n", g_list_length(mapped_seg_list));
+		
 		verbose_print("\nrvm_unmap: Unmapped segment successfully. ");
 	}
 }
@@ -293,8 +306,8 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases) {
 		}
 		char temp_str[MSG_LEN];
 		snprintf(temp_str, MSG_LEN,
-				"\nrvm_begin_trans: Adding %s segment to transaction\n",
-				seg -> name);
+				"\nrvm_begin_trans: Adding %s segment to transaction and the trans_seg_list size is = %d\n",
+				seg -> name, g_list_length(info->trans_seg_list));
 		verbose_print(temp_str);
 		info -> trans_seg_list = g_list_append(info -> trans_seg_list, seg);
 
@@ -313,7 +326,10 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases) {
 	*tid_cpy = tid;
 	g_hash_table_insert(trans_mapping, tid_cpy, info); // mapping b/w tid and trans_info
 
-	verbose_print("\nrvm_begin_trans: tid assigned");
+	char temp_str[MSG_LEN];
+	snprintf(temp_str, MSG_LEN, "\nrvm_begin_trans: tid assigned = %d\n", tid);
+	verbose_print(temp_str);
+
 	return tid;
 }
 
@@ -353,17 +369,19 @@ void rvm_commit_trans(trans_t tid) {
 	char* value;
 	trans_item_t* trans_item;
 	char dir_path[FILE_NAME_LEN];
+	
+	//fprintf(stderr, "\n In rvm_commit , transaction id =%d\n", tid);
+	//fprintf(stderr,"\n In rvm_commit, seg list length= %d and item list - %d",	g_list_length(seg_list), g_list_length(item_list));
 	snprintf(dir_path, FILE_NAME_LEN, "%s/%s", info -> rvm -> dir_path, LOG_NAME);
 	log_file = fopen(dir_path, "a");
 	// for each segment one commit record
-
 	for (iterator = seg_list; iterator; iterator = iterator -> next) {
 		seg = (seg_t*) iterator -> data;
-
+		
 		fprintf(log_file, "%s~%d~", seg -> name, seg -> size);
 		fwrite(seg -> mem, seg -> size, 1, log_file);
 		fprintf(log_file, "\n");
-
+		//fprintf(stderr, "\n In rvm_commit_trans: Inside loop: Committing transaction  with seg name = %s and seg size = %d\n", seg->name, seg->size);
 	}
 
 	fclose(log_file);

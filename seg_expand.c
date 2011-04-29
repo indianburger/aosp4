@@ -19,24 +19,22 @@ void proc1()
      
      rvm = rvm_init("rvm_segments");
      rvm_destroy(rvm, "testseg"); 
-     segs[0] = (char *) rvm_map(rvm, "testseg", 100);
+     segs[0] = (char *) rvm_map(rvm, "testseg", 1000);
 
      
      trans = rvm_begin_trans(rvm, 1, (void **) segs);
      
-     rvm_about_to_modify(trans, segs[0], 0, 20);
+     rvm_about_to_modify(trans, segs[0], 0, 30);
      sprintf(segs[0], FIRST_STRING);
      rvm_commit_trans(trans);
      rvm_unmap(rvm, segs[0]);
 
      fprintf(stderr, "\nCheck size of segment BEFORE expanding\n");
      system("ls -l rvm_segments/testseg.seg");
-     segs[0] = (char *) rvm_map(rvm, "testseg", 1000);
-
      
+     segs[0] = (char *) rvm_map(rvm, "testseg", 200);    
      trans = rvm_begin_trans(rvm, 1, (void **) segs);
-     
-     rvm_about_to_modify(trans, segs[0], OFFSET, 20);
+     rvm_about_to_modify(trans, segs[0], OFFSET, 30);
      sprintf(segs[0]+OFFSET, SECOND_STRING);
      rvm_commit_trans(trans);
      fprintf(stderr, "\nCheck size of segment AFTER expanding\n");
@@ -53,8 +51,8 @@ void proc2()
      
      rvm = rvm_init("rvm_segments");
      fprintf(stderr, "\nReading from expanded section of segment");
-     segs[0] = (char *) rvm_map(rvm, "testseg", 1000);
-     fprintf(stderr, "\nCOMPARING %s and %s", segs[0] + OFFSET, SECOND_STRING);
+     segs[0] = (char *) rvm_map(rvm, "testseg", 200);
+     //fprintf(stderr, "\nCOMPARING %s and %s", segs[0] + OFFSET, SECOND_STRING);
      if(strcmp(segs[0]+OFFSET, SECOND_STRING)) {
 	  printf("ERROR: second hello not present\n");
 	  exit(2);
