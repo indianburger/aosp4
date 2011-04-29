@@ -23,7 +23,8 @@ int main(int argc, char **argv)
      
      rvm_destroy(rvm, "testseg");
      
-     seg = (char *) segs[0] = (char *) rvm_map(rvm, "testseg", 10000);
+     segs[0] = (char *) rvm_map(rvm, "testseg", 10000);
+     seg = (char *) segs[0];
 
      /* write some data and commit it */
      trans = rvm_begin_trans(rvm, 1, segs);

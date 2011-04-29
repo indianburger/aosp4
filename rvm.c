@@ -8,6 +8,11 @@
 #include <sys/mman.h>
 #include <string.h>
 
+int verbose_debug = 1;
+GList* mapped_seg_list = NULL; //list of seg_t objects
+GHashTable* trans_mapping = NULL; //maps trans_t to trans_info object 
+#define MAX_SEG_SIZE 100000
+
 //utility functions
 void verbose_print(const char* msg){
     if (verbose_debug){
@@ -20,8 +25,12 @@ void verbose_print(const char* msg){
 int file_exists(const char* file){
     struct stat statbuf;
     int f_desc = open(file, O_RDONLY);
-    return !fstat (f_desc, &statbuf); 
-
+    int status;
+    status = !fstat (f_desc, &statbuf); 
+	//if(status)
+	close(f_desc);
+	//fprintf(stderr, "\nfile status =  %d\n", f_desc);
+	return status;
 }
 
 seg_t* find_seg (void* segbase){
@@ -38,7 +47,7 @@ seg_t* find_seg (void* segbase){
 rvm_t rvm_init(const char* directory){
     int temp;
     rvm_t rvm;
-    char log_path[FILE_NAME_LEN];
+    char* log_path = (char *)malloc(FILE_NAME_LEN);
     snprintf(log_path, FILE_NAME_LEN, "%s/%s", directory, LOG_NAME);
     if (!file_exists(directory)){
         //directory does not exist
@@ -59,7 +68,9 @@ rvm_t rvm_init(const char* directory){
     else{
         verbose_print("\nrvm_init: Using existing directory");
         if (file_exists(log_path)){
-            rvm.log_path = log_path;
+            //rvm.log_path = log_path;
+           	//strcpy((char*)rvm.log_path, log_path);
+           	fprintf(stderr, "");
         }
         else{
             fprintf(stderr, "\nExisting directory does not have log file.");
@@ -68,6 +79,9 @@ rvm_t rvm_init(const char* directory){
     }
     rvm.dir_path = directory;
     mapped_seg_list = NULL;
+    rvm.log_path = log_path;
+	//strcpy((char *)rvm.log_path, log_path);
+    fprintf(stderr, "\nthe log path of rvm is set to - %s\n", rvm.log_path);
     return rvm;
 }
 
@@ -82,6 +96,125 @@ unsigned long file_size(const char* file_path){
     return st.st_size;
     
 }
+
+void writeDataToDisk(const char* log_path, const char* seg_path, const char* segname){
+	FILE* seg_file;
+	FILE* log_file;
+	log_file = fopen(log_path,"r");
+	if (log_file == NULL){
+		perror("writeDataToDisk: Error opening log_file");
+		abort();
+	}
+
+    seg_file = fopen(seg_path, "w");
+	if (seg_file == NULL){
+		perror("writeDataToDisk: Error opening seg_file");
+	}
+	char ch;
+	char curr_segname[100];
+	char curr_segsize[100];
+	char seg_data[MAX_SEG_SIZE];
+    char buffer[MAX_SEG_SIZE + FILE_NAME_LEN + 10];
+    int seg_size;
+    
+    
+	// read char by char through the log file
+	// till you get to ~, thats the name of the segment
+	// from there to the next tilde is the size of the memory segment
+	// compare segname to the segname passed as argument
+	// if match then read from buffer and
+	// write that value in the seg_file
+	
+	while(fgets(buffer, MAX_SEG_SIZE + FILE_NAME_LEN + 10, log_file) != NULL){
+		int i = 0;
+		for (; buffer[i] != '~'; i++){
+			curr_segname[i] = buffer[i];
+		}
+		curr_segname[i] = '\0';
+		fprintf(stderr, "\nSegname in log: %s", curr_segname);
+		fprintf(stderr, "\ni: %d", i);
+		if (strcmp(segname, curr_segname)) continue;
+		int j = 0;
+		i++;
+		for (; buffer[i] != '~'; i++){
+			curr_segsize[j++] = buffer[i];
+		}
+		fprintf(stderr, "\ni: %d", i);
+		curr_segsize[j] = '\0';
+		seg_size = atoi(curr_segsize);
+		fprintf(stderr, "\nSegsize in log: %d", seg_size);
+		
+		j = 0;
+		for (++i; j < seg_size; j++, i++){
+			fprintf(stderr, "\ntada:%c!", buffer[i]);
+			fputc(buffer[i], seg_file);
+		}
+		fprintf(stderr, "\ni: %d", i);
+		fprintf(stderr,"\nThis is after the read %ld\n", ftell(log_file));	
+		
+	}
+	//free(buffer);
+	fclose(log_file);
+	fclose(seg_file);
+	/*
+	fprintf(stderr,"\nThis is the seg path = %s\n", seg_path);
+    fprintf(stderr,"\nThis is the log path = %s\n", log_path);	
+	
+	while(!feof(log_file)){
+		
+		char c;
+		int ctr = -1;
+		fprintf(stderr,"\nThis is before reading chars %ld\n", ftell(log_file));	
+		do{
+			c = fgetc(log_file);
+			current_segname[++ctr] = c;
+			fprintf(stderr,"\nThis is the character %c\n", c);	
+		}while(!feof(log_file)&&  (c != '~') );
+
+		if (c == '~') {
+			current_segname[ctr] = '\0';
+			fprintf(stderr,"\nThis is the name of current segment = %s\n",  current_segname);	
+		}
+		else{
+			fprintf(stderr, "\nwriteDateToDisk: Log malformed 1");
+			abort();
+		}
+		// for the next ~;
+		ctr = -1;		
+		do{
+			c = fgetc(log_file);
+			current_segsize[++ctr] = c;
+		}while(c != '~' && !feof(log_file));
+
+		
+		if (c == '~') {
+			current_segsize[ctr] = '\0';
+			fprintf(stderr,"\nThis is the size of current segment = %s\n", current_segsize);	
+			seg_size = atoi(current_segsize);
+			if(fread(buffer, seg_size,1, log_file)){
+				fprintf(stderr,"\nThis is after the read %ld\n", ftell(log_file));	
+			}
+			else{
+				perror("\n In writeDataToDisk :  Error reading file\n");
+			}
+			if(!strcmp(current_segname, segname)){
+				fwrite(buffer, seg_size, 1, seg_file);
+				fflush(seg_file);
+				fprintf(stderr,"\nThis is after writing to the disk and flushing\n" );	
+			}
+
+		}
+		else{
+			fprintf(stderr, "\nwriteDateToDisk: Log malformed 2. Segment size 0?");
+			abort();
+		}
+
+	}
+	
+	*/
+}
+
+
 void* rvm_map(rvm_t rvm, const char* segname, int size_to_create){
     int fd, result;
     int x;
@@ -92,11 +225,14 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create){
     struct stat st;
     snprintf(file_path, 50, "./%s/%s.seg", rvm.dir_path, segname);
     if (file_exists(file_path)){
-        //read contents in backing store to memory
+    
+	    writeDataToDisk(rvm.log_path, file_path, segname); // method to write the data to disk from the txn logs
 
+        //read contents in backing store to memory
         file_len = file_size(file_path);
         fprintf(stderr, "\noriginal size: %ld", file_len);
         fd = open(file_path, O_RDWR , (mode_t)0600);
+		
         if (file_len < size_to_create){
             //Seek to one byte before required size and write 
             //one byte so that file is extended
@@ -147,6 +283,17 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create){
 	    //fclose(file);
 
         fprintf(stderr, "\nRead contents from segment at %s of size %d", file_path, size_to_create);
+        /* Added by Nadu for testing
+         adding to the mapped_seg_list was giving an error so I pushed this up and do not add to the queue 
+        buffer = mmap (0, size_to_create, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    	seg_t* segment = (seg_t*)malloc(sizeof(struct seg));
+    	segment->name = segname;
+   		segment->size = size_to_create;
+    	segment->mem = buffer;
+
+		fprintf(stderr,"\n is it able to append the segment? name = %s segment addr = %p\n", segment->name, buffer);
+		return buffer; */
+
     }
     else{
         //no previous segment. So nothing to read. Just create a file
@@ -175,15 +322,22 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create){
         //create an empty buffer
 	    //buffer = calloc(1, size_to_create);
     }
+    	    
     buffer = mmap (0, size_to_create, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-    seg_t* segment = (seg_t*)malloc(sizeof(seg_t));
-    segment -> name = segname;
-    segment -> size = size_to_create;
-    segment -> mem = buffer;
+    if ( buffer == MAP_FAILED){
+    	perror("\nrvm_map mmap failed ");
+    }
+    	
+    seg_t* segment = (seg_t*)malloc(sizeof(struct seg));
+    segment->name = segname;
+    segment->size = size_to_create;
+    segment->mem = buffer;
+
+	fprintf(stderr,"\n In rvm_map is it able to append the segment? name = %s segment addr = %p\n", segment->name, buffer);
 
     mapped_seg_list = g_list_append(mapped_seg_list, segment);
+    fprintf(stderr, "\nRVM list size after rvm_map: %d \n", g_list_length(mapped_seg_list));
     
-    fprintf(stderr, "\nRVM list size after rvm_map: %d", g_list_length(mapped_seg_list));
     return buffer;
 
 }
@@ -226,16 +380,17 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases){
             abort();
         }
         char temp_str[MSG_LEN];
-        snprintf(temp_str, MSG_LEN, "\nrvm_begin_trans: Adding %s segment to transaction", seg -> name);
+        snprintf(temp_str, MSG_LEN, "\nrvm_begin_trans: Adding %s segment to transaction\n", seg -> name);
         verbose_print(temp_str);
-        info -> trans_seg_list = g_list_append(
-                info -> trans_seg_list, seg);
+        info -> trans_seg_list = g_list_append(info -> trans_seg_list, seg);
 
     }
     int* tid_cpy = (int*)malloc(sizeof(int));
     *tid_cpy = tid;
-    printf ( "Insertio tid %d\n", *tid_cpy );
-    g_hash_table_insert(trans_mapping, tid_cpy, info); 
+    printf ( "Inserted tid %d\n", *tid_cpy );
+    g_hash_table_insert(trans_mapping, tid_cpy, info); // mapping b/w tid and trans_info
+    
+
     return tid; 
 }
 
@@ -270,19 +425,42 @@ void rvm_about_to_modify(trans_t tid, void* segbase, int offset, int size){
 void rvm_commit_trans(trans_t tid){
     trans_info_t* info = g_hash_table_lookup(trans_mapping, &tid);
     GList* seg_list = info -> trans_seg_list;
+    GList* item_list = info -> old_value_items;
     seg_t* seg;
     GList* iterator;
     FILE* log_file;
-    log_file = fopen("store/txn.log", "a");
+    log_file = fopen("rvm_segments/txn.log", "a");
+	int size;
+	char* value;
+	trans_item_t* trans_item;
+	/*
+	for(iterator = item_list; iterator; iterator = iterator -> next){
+        trans_item = (trans_item_t*)iterator -> data;
+        fprintf(stderr, "\noffset = %d, size =  %d \n", trans_item->offset,  trans_item->size);
+        value = (char*)((trans_item->seg)->mem + trans_item->offset);
+        fprintf(stderr, "\n seg name = %s, seg size =  %d and value = %s\n",(trans_item->seg)->name, (trans_item->seg)->size, value);
+        fprintf(log_file, "%s~%d~%d~%s", (trans_item->seg)->name, (trans_item->seg)->size, trans_item->offset, value);
+        fputs("\n", log_file); 
+    }*/
+	
+	// for each segment one commit record
 
     for(iterator = seg_list; iterator; iterator = iterator -> next){
         seg = (seg_t*)iterator -> data;
-        fprintf(log_file, "%s~", seg -> name);
+
+        fprintf(log_file, "%s~%d~", seg -> name, seg -> size);
         fwrite(seg -> mem, seg -> size, 1, log_file);
-        fputs("\n", log_file);
+        fprintf(log_file, "\n");
+        //fputs("\n", log_file); 
+
+        // the issue here is that while reading from the log, I need to read only the values and not the memory bits
+        // one way is that we can store values and the offsets and not the memory chunk itself
+        // if we are writing that in the log then it is better to write it to the disk segment itself
+        // i guess we will have to use the offsets to get values and store only values in the log
     }
 
     fclose(log_file);
+    verbose_print("\nTransaction committed");
 
 }
 void rvm_abort_trans(trans_t tid){
@@ -321,6 +499,9 @@ void rvm_abort_trans(trans_t tid){
 
 void rvm_truncate_log(rvm_t rvm){
 
+}
+
+void rvm_destroy(rvm_t rvm, const char *segname) {
 }
 
 /* int main(){
@@ -383,5 +564,5 @@ void rvm_truncate_log(rvm_t rvm){
     //rvm_unmap(rvm, (void*)buffers[2]);
     
     fprintf(stderr, "\n\n");
-    abort();
+	abort();
 }*/

@@ -3,9 +3,7 @@
 #define FILE_NAME_LEN 50
 #define MSG_LEN 1000
 
-int verbose_debug = 1;
-GList* mapped_seg_list = NULL; //list of seg_t objects
-GHashTable* trans_mapping = NULL; //maps trans_t to trans_info object 
+
 typedef struct rvm{
     const char* dir_path;
     const char* log_path; //one log for all segments in directory
@@ -19,8 +17,8 @@ typedef struct seg{
 
 typedef struct trans_item{
     seg_t* seg;
-    int offset;
     int size;
+    int offset;
     void* old_value; //array of old values
 }trans_item_t;
 

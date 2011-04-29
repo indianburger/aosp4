@@ -1,3 +1,3 @@
 make cleanall
 make
-./multi
+./basic
