@@ -1,0 +1,3 @@
+make cleanall
+make
+./basic
