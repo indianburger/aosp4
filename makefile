@@ -23,6 +23,6 @@ tests: librvm.a
 	gcc -o basic basic.c `pkg-config --libs --cflags glib-2.0` ./librvm.a
 	gcc -o abort abort.c `pkg-config --libs --cflags glib-2.0` ./librvm.a	
 	gcc -o multi multi.c `pkg-config --libs --cflags glib-2.0` ./librvm.a  
-.DEFAULT : all
-.PHONY : clean all
+	gcc -o truncate truncate.c `pkg-config --libs --cflags glib-2.0` ./librvm.a  
+	gcc -o multi-abort multi-abort.c `pkg-config --libs --cflags glib-2.0` ./librvm.a  
 
