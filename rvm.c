@@ -20,6 +20,10 @@ void verbose_print(const char* msg) {
 	}
 }
 
+void rvm_verbose(int enable_flag){
+	verbose_debug = enable_flag;
+}
+
 //Function returns 0 if file does not exist,
 //non-zero otherwise.
 int file_exists(const char* file) {
@@ -302,7 +306,8 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases) {
 		if (seg == NULL) {
 			fprintf(stderr,
 					"\nrvm_begin_trans: Error. rvm_begin_trans has a segbase that is not mapped");
-			abort();
+			//abort();
+			return -1;
 		}
 		char temp_str[MSG_LEN];
 		snprintf(temp_str, MSG_LEN,
