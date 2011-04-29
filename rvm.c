@@ -27,9 +27,7 @@ int file_exists(const char* file) {
 	int f_desc = open(file, O_RDONLY);
 	int status;
 	status = !fstat(f_desc, &statbuf);
-	//if(status)
 	close(f_desc);
-	//fprintf(stderr, "\nfile status =  %d\n", f_desc);
 	return status;
 }
 
@@ -67,20 +65,15 @@ rvm_t rvm_init(const char* directory) {
 		}
 	} else {
 		verbose_print("\nrvm_init: Using existing directory");
-		if (file_exists(log_path)) {
-			//rvm.log_path = log_path;
-			//strcpy((char*)rvm.log_path, log_path);
-			fprintf(stderr, "");
-		} else {
-			fprintf(stderr, "\nExisting directory does not have log file.");
+		if (!file_exists(log_path)) {
+			fprintf(stderr, "\nrvm_init: Existing directory does not have log file.");
 			abort();
 		}
 	}
 	rvm.dir_path = directory;
 	mapped_seg_list = NULL;
 	rvm.log_path = log_path;
-	//strcpy((char *)rvm.log_path, log_path);
-	fprintf(stderr, "\nthe log path of rvm is set to - %s\n", rvm.log_path);
+	fprintf(stderr, "\nrvm_init: Log path of rvm is set to - %s\n", rvm.log_path);
 	return rvm;
 }
 
@@ -126,13 +119,11 @@ void writeDataToDisk(rvm_t rvm, const char* segname, int trunc_flag) {
 			curr_segname[i] = buffer[i];
 		}
 		curr_segname[i] = '\0';
-		fprintf(stderr, "\nSegname in log: %s", curr_segname);
-		fprintf(stderr, "\ni: %d", i);
+		fprintf(stderr, "\nwriteDataToDisk: Segname in log: %s", curr_segname);
 		if (!trunc_flag && strcmp(segname, curr_segname))
 			continue;
 		char curr_segname_full[FILE_NAME_LEN];
 		snprintf(curr_segname_full, FILE_NAME_LEN, "%s/%s.seg", rvm.dir_path, curr_segname);
-		fprintf(stderr, "\nSegname in log HERE: %s and dir: %s", curr_segname_full, rvm.dir_path);
 		seg_file = fopen(curr_segname_full, "w");
 		if (seg_file == NULL){
 			perror("\nwriteDataToDisk: Error opening seg_file");
@@ -143,27 +134,28 @@ void writeDataToDisk(rvm_t rvm, const char* segname, int trunc_flag) {
 		for (; buffer[i] != '~'; i++) {
 			curr_segsize[j++] = buffer[i];
 		}
-		fprintf(stderr, "\ni: %d", i);
 		curr_segsize[j] = '\0';
 		seg_size = atoi(curr_segsize);
-		fprintf(stderr, "\nSegsize in log: %d", seg_size);
 
 		j = 0;
 		for (++i; j < seg_size; j++, i++) {
-			//fprintf(stderr, "\ntada:%c!", buffer[i]);
 			fputc(buffer[i], seg_file);
 		}
-		fprintf(stderr, "\ni: %d", i);
-		fprintf(stderr, "\nThis is after the read %ld\n", ftell(log_file));
-		
-
+		char verbose_buffer[100];
+		snprintf(verbose_buffer, 100, "\nRecovered/Flushed %s commit record to backing store", curr_segname); 
+		verbose_print(verbose_buffer);
 		fclose(seg_file);
 	}
 	
 	fclose(log_file);
 	if (trunc_flag){
 		FILE* log_to_del = fopen(rvm.log_path, "w");
-		fclose(log_to_del);
+		if (fclose(log_to_del)){
+			perror("\nLog file truncation failed");
+		}
+		else{
+			verbose_print("\nLog file truncated successfully");
+		}
 	}
 }
 
@@ -181,7 +173,6 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 
 		//read contents in backing store to memory
 		file_len = file_size(file_path);
-		fprintf(stderr, "\noriginal size: %ld", file_len);
 		fd = open(file_path, O_RDWR, (mode_t) 0600);
 
 		if (file_len < size_to_create) {
@@ -193,10 +184,6 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 				exit(EXIT_FAILURE);
 			}
 			result = lseek(fd, 0, SEEK_SET);
-			while ((result = read(fd, &x, sizeof(int))) > 0) {
-				fprintf(stderr, "\nOriginal read: %d", x);
-
-			}
 			result = lseek(fd, size_to_create - 1, SEEK_SET);
 			if (!result) {
 				close(fd);
@@ -211,39 +198,15 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 			}
 
 			file_len = file_size(file_path);
-			fprintf(stderr, "\nnew size: %ld", file_len);
+			char verbose_buffer[100];
+			snprintf(verbose_buffer, 100, "\n%srvm_map: Segment expanded to size: %ld", segname, file_len); 
+			verbose_print(verbose_buffer);
 
 			//close(fd);
 		}
 
-		////Allocate memory
-		//buffer = malloc(size_to_create);
-		//if (!buffer)
-		//{
-		//    perror("\nError allocating memory");
-		//    fclose(file);
-		//    exit(EXIT_FAILURE);
-		//}
-
-		////Read file contents into buffer
-		//file = fopen(file_path, "rb");
-		//fseek(file, 0, SEEK_SET);
-		//result = fread(buffer, size_to_create, 1, file);
-		//printf("successful read of %d bytes", result);
-		//fclose(file);
-
-		fprintf(stderr, "\nRead contents from segment at %s of size %d",
+		fprintf(stderr, "\nrvm_map: Read contents from segment at %s of size %d",
 				file_path, size_to_create);
-		/* Added by Nadu for testing
-		 adding to the mapped_seg_list was giving an error so I pushed this up and do not add to the queue
-		 buffer = mmap (0, size_to_create, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-		 seg_t* segment = (seg_t*)malloc(sizeof(struct seg));
-		 segment->name = segname;
-		 segment->size = size_to_create;
-		 segment->mem = buffer;
-
-		 fprintf(stderr,"\n is it able to append the segment? name = %s segment addr = %p\n", segment->name, buffer);
-		 return buffer; */
 
 	} else {
 		//no previous segment. So nothing to read. Just create a file
@@ -266,15 +229,14 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 			perror("\nError writing last byte");
 			exit(EXIT_FAILURE);
 		}
-		fprintf(stderr, "\nCreated segment %s in %s", segname, file_path);
+		fprintf(stderr, "\nrvm_map: Created segment %s in %s", segname, file_path);
 		//close(fd);
 
 		//create an empty buffer
 		//buffer = calloc(1, size_to_create);
 	}
 
-	buffer
-			= mmap(0, size_to_create, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd,
+	buffer = mmap(0, size_to_create, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd,
 					0);
 	if (buffer == MAP_FAILED) {
 		perror("\nrvm_map mmap failed ");
@@ -285,14 +247,10 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 	segment->size = size_to_create;
 	segment->mem = buffer;
 
-	fprintf(
-			stderr,
-			"\n In rvm_map is it able to append the segment? name = %s segment addr = %p\n",
-			segment->name, buffer);
-
 	mapped_seg_list = g_list_append(mapped_seg_list, segment);
-	fprintf(stderr, "\nRVM list size after rvm_map: %d \n", g_list_length(
-			mapped_seg_list));
+	char verbose_buffer[100];
+	snprintf(verbose_buffer, 100, "\nrvm_map successful for segment: %s", segname); 
+	verbose_print(verbose_buffer);
 
 	return buffer;
 
@@ -301,15 +259,14 @@ void* rvm_map(rvm_t rvm, const char* segname, int size_to_create) {
 void rvm_unmap(rvm_t rvm, void* segbase) {
 	seg_t* seg = find_seg(segbase);
 	if (seg == NULL) {
-		fprintf(stderr, "\nSegment not found. Cannot be unmapped.");
+		fprintf(stderr, "\nrvm_unmap: Segment not found. Cannot be unmapped.");
 		abort();
 	}
 	if (munmap(segbase, seg -> size) == -1) {
 		perror("Error un-mmapping the file");
 	} else {
-		verbose_print("\nUnmapped segment successfully. ");
+		verbose_print("\nrvm_unmap: Unmapped segment successfully. ");
 	}
-	//TODO: need to close file also
 }
 
 trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases) {
@@ -331,7 +288,7 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases) {
 		seg_t* seg = find_seg(segbases[i]);
 		if (seg == NULL) {
 			fprintf(stderr,
-					"\nError. rvm_begin_trans has a segbase that is not mapped");
+					"\nrvm_begin_trans: Error. rvm_begin_trans has a segbase that is not mapped");
 			abort();
 		}
 		char temp_str[MSG_LEN];
@@ -342,12 +299,21 @@ trans_t rvm_begin_trans(rvm_t rvm, int numsegs, void **segbases) {
 		info -> trans_seg_list = g_list_append(info -> trans_seg_list, seg);
 
 	}
+
+	rvm_t* rvm1 = (rvm_t*)malloc(sizeof(rvm_t));
+	char* dir_path = (char*)malloc(FILE_NAME_LEN * sizeof(char));
+	strcpy(dir_path, rvm.dir_path);
+	rvm1 -> dir_path = dir_path;
+
+	char* log_path1 = (char*)malloc(FILE_NAME_LEN * sizeof(char));
+	strcpy(log_path1, rvm.log_path);
+	rvm1 -> log_path = log_path1;
+	info -> rvm = rvm1;
 	int* tid_cpy = (int*) malloc(sizeof(int));
 	*tid_cpy = tid;
-	printf("Inserted tid %d\n", *tid_cpy);
 	g_hash_table_insert(trans_mapping, tid_cpy, info); // mapping b/w tid and trans_info
 
-
+	verbose_print("\nrvm_begin_trans: tid assigned");
 	return tid;
 }
 
@@ -367,17 +333,13 @@ void rvm_about_to_modify(trans_t tid, void* segbase, int offset, int size) {
 	memcpy(item -> old_value, segbase + offset, size);
 
 	trans_info_t* info = g_hash_table_lookup(trans_mapping, &tid);
-	//if (info -> old_value_items == NULL){
-	//    info -> old_value_items = g_queue_new();
-	//}
-	//g_queue_push_tail(info -> old_value_items, item);
 	info -> old_value_items = g_list_append(info -> old_value_items, item);
-	//fprintf(stderr, "\naBOUTING: segname: %s, offset: %d, size: %d", seg-> name, item -> offset, item -> size);
-
-
-	//trans_item_t* item1 = (trans_item_t*) g_queue_pop_tail(info -> old_value_items);
-	//seg_t* seg1 = item1 -> seg;
-	//fprintf(stderr, "\nREMOVING IMM: segname: %s, offset: %d, size: %d", seg1-> name, item1 -> offset, item1 -> size);
+	
+	
+	char verbose_buffer[100];
+	snprintf(verbose_buffer, 100, "\nrvm_about_to_modify: old values saved for segment: %s, offset: %d, size: %d", 
+		seg -> name, offset, size); 
+	verbose_print(verbose_buffer);
 }
 
 void rvm_commit_trans(trans_t tid) {
@@ -387,20 +349,12 @@ void rvm_commit_trans(trans_t tid) {
 	seg_t* seg;
 	GList* iterator;
 	FILE* log_file;
-	log_file = fopen("rvm_segments/txn.log", "a");
 	int size;
 	char* value;
 	trans_item_t* trans_item;
-	/*
-	 for(iterator = item_list; iterator; iterator = iterator -> next){
-	 trans_item = (trans_item_t*)iterator -> data;
-	 fprintf(stderr, "\noffset = %d, size =  %d \n", trans_item->offset,  trans_item->size);
-	 value = (char*)((trans_item->seg)->mem + trans_item->offset);
-	 fprintf(stderr, "\n seg name = %s, seg size =  %d and value = %s\n",(trans_item->seg)->name, (trans_item->seg)->size, value);
-	 fprintf(log_file, "%s~%d~%d~%s", (trans_item->seg)->name, (trans_item->seg)->size, trans_item->offset, value);
-	 fputs("\n", log_file);
-	 }*/
-
+	char dir_path[FILE_NAME_LEN];
+	snprintf(dir_path, FILE_NAME_LEN, "%s/%s", info -> rvm -> dir_path, LOG_NAME);
+	log_file = fopen(dir_path, "a");
 	// for each segment one commit record
 
 	for (iterator = seg_list; iterator; iterator = iterator -> next) {
@@ -409,122 +363,43 @@ void rvm_commit_trans(trans_t tid) {
 		fprintf(log_file, "%s~%d~", seg -> name, seg -> size);
 		fwrite(seg -> mem, seg -> size, 1, log_file);
 		fprintf(log_file, "\n");
-		//fputs("\n", log_file);
 
-		// the issue here is that while reading from the log, I need to read only the values and not the memory bits
-		// one way is that we can store values and the offsets and not the memory chunk itself
-		// if we are writing that in the log then it is better to write it to the disk segment itself
-		// i guess we will have to use the offsets to get values and store only values in the log
 	}
 
 	fclose(log_file);
-	verbose_print("\nTransaction committed");
+	verbose_print("\nrvm_commit_trans: Transaction committed");
 
 }
 void rvm_abort_trans(trans_t tid) {
 	trans_info_t* info = g_hash_table_lookup(trans_mapping, &tid);
-	//GQueue* old_values = info -> old_value_items;
-
-
 	seg_t* segu = (seg_t*) g_list_first(mapped_seg_list) -> data;
 	GList* it = g_list_last(info -> old_value_items);
 	for (; it != NULL; it = g_list_previous(it)) {
 		trans_item_t* item = (trans_item_t*) (it -> data);
 		seg_t* seg = item -> seg;
 
-		fprintf(stderr, "\naborting: segname: %s, offset: %d, size: %d",
-				seg-> name, item -> offset, item -> size);
-		fprintf(stderr, "\naborting: current contents\n");
 		fwrite(seg -> mem, seg->size, 1, stderr);
 
-		fprintf(stderr, "\naborting: contents which overwrite\n");
 		fwrite(item -> old_value, item -> size, 1, stderr);
 
 		memcpy((seg -> mem) + item -> offset, item -> old_value, item -> size);
 
 	}
-
-	//while((info -> old_value_items) != NULL && g_queue_get_length(info -> old_value_items)){
-	//    //read list of old value items backwards and apply them
-	//    //on the segments in memory for all items for this tid.
-	//    trans_item_t* item = (trans_item_t*) g_queue_pop_tail(info -> old_value_items);
-
-
-	//}
-
-	verbose_print("\nrvm_abort_trans: Successfull abort");
+	verbose_print("\nrvm_abort_trans: Transaction aborted successfully.");
 }
 
 void rvm_truncate_log(rvm_t rvm) {
 	const char null_char[10] = "";
 	writeDataToDisk(rvm, null_char, 1);
+	verbose_print("\nrvm_truncate_log: Truncation successful");
 }
 
 void rvm_destroy(rvm_t rvm, const char *segname) {
 	char cmd[FILE_NAME_LEN + 10];
 	snprintf(cmd, 50, "rm ./%s/%s.seg", rvm.dir_path, segname);
 	system(cmd);
+	char verbose_buffer[100];
+	snprintf(verbose_buffer, 100, "\nrvm_destroy: Deleting backing store for segment: %s", segname); 
+	verbose_print(verbose_buffer);
 }
 
-/* int main(){
- char* buffers[1];
- int i;
- GList* iterator = NULL;
- rvm_t rvm = rvm_init("store");
- fprintf(stderr, "\ncreated path: %s", rvm.dir_path);
- buffers[0] = (char*)rvm_map(rvm, "seg0", 10);
- //buffers[1] = (char*)rvm_map(rvm, "seg1", 10);
- //buffers[2] = (char*)rvm_map(rvm, "seg2", 10);
-
- snprintf(buffers[0]+1, 10, "BLAH1");
- //snprintf(buffers[1]+2, 10, "BLAH2");
- //snprintf(buffers[2]+3, 10, "BLAH3");
- seg_t* segu = (seg_t*)g_list_first(mapped_seg_list) -> data;
- fprintf(stderr, "\nPoint1:\n");
- fwrite(segu -> mem, segu -> size, 1, stderr);
- fprintf(stderr, "\nBEFORE\n\n");
- fprintf(stderr, "\nbuffer[0]:\n");
- fwrite(buffers[0], 10, 1, stderr);
- fflush(stderr);
- //fprintf(stderr, "\nbuffer[1]:\n");
- //fwrite(buffers[1], 10, 1, stderr);
- //fflush(stderr);
-
- //fprintf(stderr, "\nbuffer[2]:\n");
- //fwrite(buffers[2], 10, 1, stderr);
- //fflush(stderr);
-
-
- trans_t tid = rvm_begin_trans(rvm, 1, (void**)buffers);
- fprintf(stderr, "\ntid: %d ", tid);
-
-
- rvm_about_to_modify(tid, buffers[0], 1, 6);
- //snprintf(buffers[0]+1, 10, "TEST1");
- //rvm_about_to_modify(tid, buffers[1], 2, 6);
- //snprintf(buffers[1]+2, 10, "TEST2");
- //
- //rvm_about_to_modify(tid, buffers[2], 3, 6);
- //snprintf(buffers[2]+3, 10, "TEST3");
-
-
- //rvm_commit_trans(tid);
- //rvm_abort_trans(tid);
- fprintf(stderr, "\nAFTER\n\n");
- fprintf(stderr, "\nbuffer[0]:\n");
- fwrite(buffers[0], 10, 1, stderr);
- fflush(stderr);
- //fprintf(stderr, "\nbuffer[1]:\n");
- //fwrite(buffers[1], 10, 1, stderr);
- //fflush(stderr);
-
- //fprintf(stderr, "\nbuffer[2]:\n");
- //fwrite(buffers[2], 10, 1, stderr);
- //fflush(stderr);
- rvm_unmap(rvm, (void*)buffers[0]);
- //rvm_unmap(rvm, (void*)buffers[1]);
- //rvm_unmap(rvm, (void*)buffers[2]);
-
- fprintf(stderr, "\n\n");
- abort();
- }*/

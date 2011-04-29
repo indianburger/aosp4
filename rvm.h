@@ -25,6 +25,7 @@ typedef struct trans_item{
 typedef struct trans_info{
     GList* trans_seg_list; //list of segments used in transaction
     GList* old_value_items; //list of trans_items stored with rvm_about_to_modify
+    rvm_t* rvm; //corresponding rvm object
 }trans_info_t;
 
 typedef int trans_t;
